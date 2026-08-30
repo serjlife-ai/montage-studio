@@ -1,0 +1,21 @@
+# Модель распознавания речи - 1.6 ГБ, качается при установке
+models/*.bin
+models/*.part
+
+# Локальное окружение и обёртки, создаются setup.sh
+.venv/
+.claude/
+montage
+reel
+
+# Рабочие файлы монтажа: исходники и результаты в репозитории не живут
+*.mov
+*.mp4
+*.MOV
+*.MP4
+!.agents/skills/**/*.mp4
+кадр_*.png
+план.json
+transcript.json
+
+.DS_Store
