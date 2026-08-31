@@ -277,6 +277,16 @@ PRE
   } > "$ROOT/staticscore"
   chmod +x "$ROOT/staticscore"
   ok "оценка статики готова: ./staticscore"
+
+  # пятая обёртка - нарезка эфира на клипы по транскрипту
+  {
+    echo '#!/usr/bin/env bash'
+    echo '# Нарезка эфира на клипы: ./clips транскрипт.srt --count 5'
+    echo "$PRELUDE"
+    echo 'exec "$PY" tools/clips.py "$@"'
+  } > "$ROOT/clips"
+  chmod +x "$ROOT/clips"
+  ok "нарезка на клипы готова: ./clips"
 fi
 
 printf "\n\033[1m== Итог\033[0m\n"

@@ -9,6 +9,7 @@ montage
 reel
 preflight
 staticscore
+clips
 __pycache__/
 *.pyc
 
