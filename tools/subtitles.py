@@ -13,15 +13,41 @@ BAND_H = 460
 BAND_Y = 1130          # лицо выше полосы, UI инсты ниже
 FPS = 30
 
-# Шрифт: на разных macOS набор системных шрифтов отличается, берём первый живой.
+# Шрифт ищем, а не зашиваем: контур работает и на macOS, и на Linux-сервере.
+# Порядок: переменная окружения -> шрифты macOS -> шрифты Linux -> поиск
+# по системе через fc-match. Кириллица обязательна, латинские шрифты
+# без неё не годятся.
+def _fc_match():
+    """Спросить у системы жирный шрифт с кириллицей (Linux, fontconfig)."""
+    for query in ("Noto Sans:bold:lang=ru", "DejaVu Sans:bold:lang=ru",
+                  ":bold:lang=ru", ":lang=ru"):
+        try:
+            out = subprocess.run(["fc-match", "-f", "%{file}", query],
+                                 capture_output=True, text=True,
+                                 timeout=5).stdout.strip()
+            if out and os.path.exists(out):
+                return out
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return ""
+
+
 FONT_CANDIDATES = [
     os.environ.get("SUBS_FONT", ""),
+    # macOS
     "/System/Library/Fonts/SFNSRounded.ttf",
     "/System/Library/Fonts/SFNS.ttf",
     "/System/Library/Fonts/HelveticaNeue.ttc",
     "/Library/Fonts/Arial Unicode.ttf",
+    # Linux: сначала жирные начертания, титрам нужен вес
+    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 ]
 FONT_PATH = next((p for p in FONT_CANDIDATES if p and os.path.exists(p)), "")
+if not FONT_PATH:
+    FONT_PATH = _fc_match()
 FONT_VARIATION = "Black"
 SIZE = 84
 LINE_H = 104
@@ -44,7 +70,9 @@ KEEP_HEAD = 1
 
 def load_font(size):
     if not FONT_PATH:
-        sys.exit("шрифт не найден: задай SUBS_FONT=/путь/к/шрифту.ttf")
+        sys.exit("шрифт с кириллицей не найден.\n"
+                 "  Linux:  sudo apt install fonts-noto-core  (или fonts-dejavu)\n"
+                 "  либо задай вручную: SUBS_FONT=/путь/к/шрифту.ttf")
     f = ImageFont.truetype(FONT_PATH, size)
     try:
         f.set_variation_by_name(FONT_VARIATION)
