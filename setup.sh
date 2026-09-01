@@ -224,7 +224,21 @@ fi
 if [ "$CHECK_ONLY" = 0 ]; then
   # Общий пролог обёрток: найти python окружения контура и whisper-cli.
   # На сервере whisper часто собран из исходников и в PATH его нет.
+  #
+  # Аргументы разворачиваем в абсолютные пути ДО перехода в каталог
+  # контура: обёртка делает cd, и относительный путь вида `ролик.mp4`
+  # после этого указывает не туда, где стоял человек. Ловится не сразу -
+  # из своей папки всё работает, из чужой падает "файла нет".
   read -r -d '' PRELUDE <<'PRE' || true
+ARGS=()
+for arg in "$@"; do
+  if [ -e "$arg" ]; then
+    ARGS+=("$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")")
+  else
+    ARGS+=("$arg")
+  fi
+done
+set -- "${ARGS[@]}"
 cd "$(dirname "$0")"
 PY=python3
 [ -x .venv/bin/python3 ] && PY=.venv/bin/python3
@@ -287,6 +301,26 @@ PRE
   } > "$ROOT/clips"
   chmod +x "$ROOT/clips"
   ok "нарезка на клипы готова: ./clips"
+
+  # шестая обёртка - выбор последнего дубля из записи с запинками
+  {
+    echo '#!/usr/bin/env bash'
+    echo '# Последний дубль каждой фразы: ./takes врезки.mp4'
+    echo "$PRELUDE"
+    echo 'exec "$PY" tools/takes.py "$@"'
+  } > "$ROOT/takes"
+  chmod +x "$ROOT/takes"
+  ok "выбор дублей готов: ./takes"
+
+  # седьмая обёртка - сборка ролика-реакции с врезками
+  {
+    echo '#!/usr/bin/env bash'
+    echo '# Сборка ролика-реакции: ./interject план.json -o ролик.mp4'
+    echo "$PRELUDE"
+    echo 'exec "$PY" tools/interject.py "$@"'
+  } > "$ROOT/interject"
+  chmod +x "$ROOT/interject"
+  ok "сборка реакции готова: ./interject"
 fi
 
 printf "\n\033[1m== Итог\033[0m\n"
