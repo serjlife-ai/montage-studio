@@ -17,6 +17,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import reels                                    # real_frame + ACHAIN переиспользуем
+from whisper_json import load_whisper_json      # whisper рвёт кириллицу на токенах
 
 W, H, FPS = 1080, 1920, 30
 
@@ -55,7 +56,7 @@ def run(cmd):
 
 
 def load_words(path):
-    return json.load(open(path))
+    return load_whisper_json(path)
 
 
 def cut_points(words, total):
@@ -86,9 +87,35 @@ def cut_points(words, total):
         nxt = keep[i + 1]
         while nxt - out[-1] > MAX_SHOT:
             target = out[-1] + MAX_SHOT * 0.8
-            best = min((s for s in starts if out[-1] + MIN_SHOT <= s <= nxt - MIN_SHOT),
+            # Кандидат обязан оставить законный кусок СЛЕВА: иначе берётся
+            # точка, ближайшая к цели, но за ней остаётся провисший план.
+            # Поймано 01.09.2026: пара 15.88-18.82 = 2.94 с при лимите 2.6 -
+            # выбиралась дальняя граница слова, левый кусок никто не мерил.
+            best = min((s for s in starts
+                        if out[-1] + MIN_SHOT <= s <= min(nxt - MIN_SHOT,
+                                                          out[-1] + MAX_SHOT)),
                        key=lambda s: abs(s - target), default=None)
             if best is None:
+                # Законной границы слова нет. Два случая: хвост записи без
+                # речи и плотная речь, где слова жмутся к краям окна. И там,
+                # и там режем равномерно по времени: кат в паузе между
+                # словами ритм не портит, а провисший план портит и роняет
+                # инвариант.
+                gap = nxt - out[-1]
+                parts = int(gap // MAX_SHOT) + 1
+                step = gap / parts
+                if step < MIN_SHOT:
+                    break
+                # рядом с расчётной точкой ищем границу слова: кат по слову
+                # читается лучше, чем кат по секундомеру
+                for _ in range(parts - 1):
+                    want = out[-1] + step
+                    near = [s for s in starts
+                            if abs(s - want) <= 0.25
+                            and s - out[-1] >= MIN_SHOT
+                            and nxt - s >= MIN_SHOT]
+                    out.append(round(min(near, key=lambda s: abs(s - want))
+                                     if near else want, 2))
                 break
             out.append(round(best, 2))
     out.append(total)
@@ -254,7 +281,7 @@ def main():
         run(["ffmpeg", "-y", "-v", "error", "-i", src, "-vn", "-ac", "1", "-ar", "16000",
              "-c:a", "pcm_s16le", f"{wd}/src.wav"])
         wj = reels.transcribe(f"{wd}/src.wav", f"{wd}/w", a.lang)
-        tr = json.load(open(wj))["transcription"]
+        tr = load_whisper_json(wj)["transcription"]
         toks = [(s["offsets"]["from"]/1000.0, s["offsets"]["to"]/1000.0, s["text"])
                 for s in tr if s["text"].strip()]
         acc = []

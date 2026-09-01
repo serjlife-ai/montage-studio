@@ -27,7 +27,8 @@ import argparse, json, os, subprocess, sys, tempfile, shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import reels, subtitles, creative, window as windowmod
+import reels
+from whisper_json import load_whisper_json, subtitles, creative, window as windowmod
 
 CUT_IF_SILENCE_OVER = 0.05     # доля тишины, при которой включаем резку пауз
 MUTE_PAD = 0.08                # запас гашения титров вокруг окна
@@ -41,7 +42,7 @@ def words_of(src, wd, lang, fixes):
     run(["ffmpeg", "-y", "-v", "error", "-i", src, "-vn", "-ac", "1", "-ar", "16000",
          "-c:a", "pcm_s16le", f"{wd}/src.wav"])
     wj = reels.transcribe(f"{wd}/src.wav", f"{wd}/raw", lang)
-    tr = json.load(open(wj))["transcription"]
+    tr = load_whisper_json(wj)["transcription"]
     toks = [(s["offsets"]["from"] / 1000.0, s["offsets"]["to"] / 1000.0, s["text"])
             for s in tr if s["text"].strip()]
     out = []

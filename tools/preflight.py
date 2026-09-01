@@ -116,7 +116,7 @@ def speech_levels(db):
     return th, floor, loud, q, l, l - q, len(lv)
 
 
-def subtitle_band_frames(src, dur, out_dir):
+def subtitle_band_frames(src, dur, out_dir, frame_h=None):
     """Кадры полосы титров - агент обязан посмотреть их ДО рендера.
 
     Найдено живым тестом 31.08.2026: исходник был снят с УЖЕ выжженными
@@ -130,19 +130,30 @@ def subtitle_band_frames(src, dur, out_dir):
 
     Поэтому решаем не числом, а глазами: вырезаем полосу, куда контур
     кладёт титры, и показываем её человеку и агенту.
+
+    Полоса считается в ДОЛЯХ кадра, а не в пикселях канона: донор часто
+    приходит не 1080x1920 (у блогеров 720x1280 обычное дело), и кроп по
+    зашитым пикселям молча не давал ни одного кадра - папка создавалась
+    пустой, а предупреждение об уже выжженных титрах не выдавалось.
     """
     os.makedirs(out_dir, exist_ok=True)
-    y0, y1 = int(H * 0.58), int(H * 0.82)
+    h = int(frame_h or H)
+    y0, y1 = int(h * 0.58), int(h * 0.82)
     shots = []
     for i, t in enumerate((dur * 0.25, dur * 0.5, dur * 0.75)):
         p = os.path.join(out_dir, f"band_{i + 1}.png")
         r = subprocess.run(
             ["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", src,
              "-vframes", "1", "-vf",
-             f"crop={W}:{y1 - y0}:0:{y0},scale=540:-1", p],
+             f"crop=iw:{y1 - y0}:0:{y0},scale=540:-1", p],
             capture_output=True)
         if r.returncode == 0 and os.path.exists(p):
             shots.append(p)
+        elif i == 0:
+            err = r.stderr.decode(errors="replace").strip().splitlines()
+            if err:
+                print(f"  [внимание] кадры полосы титров не вырезались: "
+                      f"{err[-1][:80]}")
     return shots
 
 
@@ -265,7 +276,8 @@ def main():
     if vs is not None and dur > 0:
         band_dir = a.frames or os.path.join(
             tempfile.mkdtemp(prefix="preflight_band_"), "band")
-        shots = subtitle_band_frames(src, dur, band_dir)
+        shots = subtitle_band_frames(src, dur, band_dir,
+                                     frame_h=rep.get("frame", {}).get("h"))
         if shots:
             print()
             print("кадры полосы титров (посмотреть ДО рендера):")

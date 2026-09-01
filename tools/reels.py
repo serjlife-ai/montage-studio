@@ -16,6 +16,7 @@ import argparse, json, os, subprocess, sys, tempfile, wave
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import subtitles
+from whisper_json import load_whisper_json
 
 W, H, FPS = 1080, 1920, 30
 # Модель whisper ищем, а не зашиваем: на другой машине она лежит иначе.
@@ -222,7 +223,7 @@ def main():
     import re
     def wc(p):
         return len(re.findall(r"[А-Яа-яЁёA-Za-z]+",
-                              "".join(s["text"] for s in json.load(open(p))["transcription"])))
+                              "".join(s["text"] for s in load_whisper_json(p)["transcription"])))
     print(f"слов: исходник {wc(src_wj)} -> итог {wc(wj)} | титры: {g} фраз")
     print(f"готово: {out}")
     return 0

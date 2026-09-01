@@ -29,6 +29,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from whisper_json import load_whisper_json
+
 # Слова-паразиты: на них фразы не сравниваем, иначе всё похоже на всё
 FILLER = {
     "ну", "вот", "это", "как", "бы", "там", "типа", "короче", "значит",
@@ -65,7 +68,7 @@ def transcribe(src, wd, lang="ru"):
     subprocess.run([whisper, "-m", model, "-f", wav, "-l", lang,
                     "-oj", "-of", pref, "-np"],
                    check=True, capture_output=True)
-    data = json.load(open(pref + ".json"))
+    data = load_whisper_json(pref + ".json")
     out = []
     for s in data.get("transcription", []):
         t = s.get("text", "").strip()

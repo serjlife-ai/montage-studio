@@ -6,6 +6,8 @@ ffmpeg на Маке собран без libass и drawtext, поэтому ка
 контроль над версткой - подсветка активного слова, автоподбор кегля, цензура.
 """
 import json, os, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from whisper_json import load_whisper_json
 from PIL import Image, ImageDraw, ImageFont
 
 W = 1080
@@ -83,7 +85,7 @@ def load_font(size):
 
 def words_from(path):
     """whisper-cli -ml 1 отдаёт токены; склеиваем их обратно в слова."""
-    tr = json.load(open(path))["transcription"]
+    tr = load_whisper_json(path)["transcription"]
     toks = [(s["offsets"]["from"] / 1000.0, s["offsets"]["to"] / 1000.0, s["text"])
             for s in tr if s["text"].strip()]
     out = []
