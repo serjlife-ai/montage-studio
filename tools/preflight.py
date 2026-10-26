@@ -58,6 +58,33 @@ def real_frame(vs):
     return ((h, w) if abs(rot) % 180 == 90 else (w, h)), rot
 
 
+# Кривые HDR по полю color_transfer ffprobe. Айфон пишет Dolby Vision
+# поверх HLG (arib-std-b67), камеры и экранные записи - HDR10/PQ (smpte2084).
+HDR_TRANSFERS = {"arib-std-b67": "HLG / Dolby Vision", "smpte2084": "HDR10 / PQ"}
+
+# Тонмаппинг HDR -> SDR. hable держит и тени, и света; desat=0 не гасит цвет
+# лица. Каждый HDR-исходник перегоняется ОТДЕЛЬНО и ДО склейки: фильтр на
+# готовой сборке испортил бы куски, которые и так были SDR.
+TONEMAP = ("zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
+           "tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,"
+           "format=yuv420p")
+
+
+def hdr_kind(vs):
+    """Название HDR-кривой или None для обычного SDR."""
+    return HDR_TRANSFERS.get(vs.get("color_transfer", ""))
+
+
+def to_sdr(src, dst):
+    """Перегнать HDR-исходник в SDR bt709 с тонмаппингом, звук копией."""
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", src, "-vf", TONEMAP,
+         "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+         "-c:a", "copy", "-movflags", "+faststart", dst],
+        check=True)
+    return dst
+
+
 def frame_db(src, wd):
     """Уровень каждого кадра 20 мс в dB."""
     wav = f"{wd}/probe.wav"
@@ -178,6 +205,9 @@ def main():
     ap.add_argument("input")
     ap.add_argument("--json", help="куда сложить отчёт машинным видом")
     ap.add_argument("--frames", help="куда сложить кадры полосы титров")
+    ap.add_argument("--sdr", nargs="?", const="", metavar="ВЫХОД",
+                    help="если исходник HDR - перегнать в SDR (по умолчанию "
+                         "рядом: <имя>_sdr.mp4) и проверять уже его")
     a = ap.parse_args()
 
     src = os.path.abspath(os.path.expanduser(a.input))
@@ -185,6 +215,16 @@ def main():
         sys.exit(f"файла нет: {src}")
 
     info = probe(src)
+    if a.sdr is not None:
+        vs0 = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
+        if vs0 is not None and hdr_kind(vs0):
+            dst = os.path.abspath(os.path.expanduser(a.sdr)) if a.sdr else \
+                os.path.splitext(src)[0] + "_sdr.mp4"
+            print(f"HDR ({hdr_kind(vs0)}) -> SDR: {os.path.basename(dst)}")
+            src = to_sdr(src, dst)
+            info = probe(src)
+        else:
+            print("исходник уже SDR - перегонять нечего")
     vs = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
     aus = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
     dur = float(info["format"].get("duration", 0))
@@ -216,6 +256,16 @@ def main():
               f"  {vs['codec_name']}  {fps:.0f} fps")
         rep["frame"] = {"w": fw, "h": fh, "rotation": rot,
                         "codec": vs["codec_name"], "fps": round(fps, 2)}
+        hdr = hdr_kind(vs)
+        if hdr:
+            print(f"цвет:         {hdr} ({vs.get('pix_fmt')}, "
+                  f"{vs.get('color_transfer')})")
+            rep["frame"]["hdr"] = hdr
+            rep["warnings"].append(
+                f"исходник в HDR ({hdr}). Айфон снимает так по умолчанию. "
+                f"Склейка без тонмаппинга даёт бледную, вымытую картинку и "
+                f"серое лицо - ошибки в логе при этом не будет. Перегнать в SDR "
+                f"ДО монтажа: ./preflight --sdr вход.mov")
         if (fw, fh) != (W, H):
             if fw > fh:
                 rep["decisions"].append(
